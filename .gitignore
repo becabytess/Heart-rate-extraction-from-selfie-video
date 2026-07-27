@@ -1,2 +1,6 @@
 rPPG-Toolbox
 .env
+*.tar
+*.gz
+__pycache__
+final/__pycache__

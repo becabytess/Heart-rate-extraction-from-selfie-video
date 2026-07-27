@@ -2,6 +2,7 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np 
 import torch 
 import os 
+from scipy.signal import butter, filtfilt  
 
 # sample_subject = subjects[0]
 # sample_roi = np.loadtxt(os.path.join(data_path, sample_subject, 'roi_colors.txt'), delimiter=',')
@@ -30,6 +31,18 @@ class UBFC_Dataset(Dataset):
                 self.possible_ranges.append((subject, i)) 
     def __len__(self):
         return len(self.possible_ranges)
+     
+    def bandpass_filter(self, data, lowcut, highcut, fs, order=3):
+        nyq = 0.5 * fs 
+        low = lowcut / nyq 
+        high = highcut / nyq
+        b, a = butter(order, [low, high], btype='band')
+        y = filtfilt(b, a, data,axis=0)
+        return y
+
+    
+
+
 
     def __getitem__(self, index):
         subject,i = self.possible_ranges[index] 
@@ -39,11 +52,17 @@ class UBFC_Dataset(Dataset):
         colors = np.loadtxt(colors_path, delimiter=',')
         signal_seq = signals[0,i : i + self.seq_len]
         color_seq = colors[i : i + self.seq_len]
-        min_vals = color_seq.min(axis=0, keepdims=True)
-        max_vals = color_seq.max(axis=0, keepdims=True)
-        color_seq = (color_seq - min_vals) / (max_vals - min_vals + 1e-6)  #we are basically trying to ignore the constant offset in the color values and only focus on the changes in the color values which are indicative of the blood volume pulse
-        signal_seq = torch.tensor(signal_seq, dtype=torch.float32)
+        #seperate the 9 channels into 3 regions and normalize each region separately
+        color_seq = color_seq.reshape(self.seq_len,3,3)
+       
+        mean = color_seq.mean(axis=0, keepdims=True)
+        std = color_seq.std(axis=0, keepdims=True)
+        color_seq = color_seq - mean / (std + 1e-6) #per roi , per channel normalization (z-score)
+        
+        color_seq = color_seq.reshape(self.seq_len,9) #flatten back to (seq_len, 9)
+        signal_seq = self.bandpass_filter(signal_seq, lowcut=0.7, highcut=2.5, fs=30, order=2) #bandpass filter the signal sequence
+        signal_seq = torch.tensor(signal_seq.copy(), dtype=torch.float32)
 
-        return torch.tensor(color_seq, dtype=torch.float32), torch.unsqueeze(signal_seq, dim=-1)  #returning the color sequence and the corresponding signal sequence
+        return torch.tensor(color_seq, dtype=torch.float32), torch.unsqueeze(signal_seq, dim=-1)  
 
     

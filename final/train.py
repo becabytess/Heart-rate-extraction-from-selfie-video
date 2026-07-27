@@ -9,9 +9,9 @@ sys.path.append("/data") # Tell Python to check your mounted volume directory fo
 from datasets import UBFC_Dataset
 
 #modal volume put rppg-data "../data" "data" 
-#modal volume put rppg-data datasets.py  dataset.py 
-# 
-image = modal.Image.debian_slim().pip_install("torch", "numpy", "matplotlib")
+#modal volume put rppg-data datasets.py  dataset.py (add --force flag when uploading again after edits)
+
+image = modal.Image.debian_slim().pip_install("torch", "numpy", "matplotlib","scipy")
 app = modal.App("rppg",image=image )
 
 vol = modal.Volume.from_name("rppg-data",create_if_missing=True)
@@ -31,28 +31,25 @@ class rPPGModel(torch.nn.Module):
         self.transformer_encoder_layer = torch.nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.nhead, dim_feedforward=self.ff_hidden_size,batch_first=True,activation="gelu")
         self.transformer_encoder = torch.nn.TransformerEncoder(self.transformer_encoder_layer, num_layers=self.num_layers)
 
-        self.decoder_embedding = torch.nn.Linear(self.output_size, self.d_model)
-        self.transformer_decoder_layer = torch.nn.TransformerDecoderLayer(d_model=self.d_model, nhead=self.nhead, dim_feedforward=self.ff_hidden_size,batch_first=True,activation="gelu")
-        self.transformer_decoder = torch.nn.TransformerDecoder(self.transformer_decoder_layer, num_layers=self.num_layers)
+        # self.decoder_embedding = torch.nn.Linear(self.output_size, self.d_model)
+        # self.transformer_decoder_layer = torch.nn.TransformerDecoderLayer(d_model=self.d_model, nhead=self.nhead, dim_feedforward=self.ff_hidden_size,batch_first=True,activation="gelu")
+        # self.transformer_decoder = torch.nn.TransformerDecoder(self.transformer_decoder_layer, num_layers=self.num_layers)
 
 
         self.head = torch.nn.Linear(self.d_model, self.output_size)
 
-    def forward(self, src, tgt):
+    def forward(self, src):
+        #predict direction from encoder output 
+
         #src: (B, T, input_size) , target: (B, T, output_size)
         
         src = self.encoder_embedding(src) #(B, T, d_model)
         memory = self.transformer_encoder(src) #(B, T, d_model)
+        output = self.head(memory) #(B, T, output_size)
 
-        tgt = self.decoder_embedding(tgt) #(B, T, d_model)
-        mask = torch.triu(torch.ones(tgt.size(1), tgt.size(1), device=tgt.device), diagonal=1).bool() #(T, T)
-
-        decoder_output = self.transformer_decoder(tgt, memory  , tgt_mask=mask) #(B, T, d_model)
-        output = self.head(decoder_output) #(B, T, output_size)
         return output
 
         
-
 
 class MSE_NegPearsonLoss(torch.nn.Module):
     def __init__(self):
@@ -110,7 +107,7 @@ def train():
     random_seed = 42
     train_dataset, test_dataset = random_split(dataset, [train_size, test_size], generator=torch.Generator().manual_seed(random_seed))
 
-    batch_size = 2000
+    batch_size = 1000
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
@@ -122,14 +119,14 @@ def train():
         for color_seq, signal_seq in test_loader:
                 color_seq = color_seq.to(device)
                 signal_seq = signal_seq.to(device)
-                preds = model(color_seq, signal_seq)
+                preds = model(color_seq)
                 mse_loss,neg_pearson_loss = MSE_NegPearsonLoss()(preds, signal_seq)
                 curr_loss = mse_loss + neg_pearson_loss
                 total_loss += curr_loss.item()
         
 
         
-        avg_loss =  total_loss / len(test_dataset)
+        avg_loss =  total_loss / len(test_loader)
         model.train()
         return avg_loss
 
@@ -138,7 +135,8 @@ def train():
     epochs = 10 
     log_every = 10
     best_loss = float('inf')
-    if os.path.exists("/data/best_model.pth"):
+    load_weight = False
+    if os.path.exists("/data/best_model.pth") and load_weight:
         chkpt = torch.load("/data/best_model.pth")
         model.load_state_dict(chkpt["model_state_dict"])
         optimizer.load_state_dict(chkpt["optimizer_state_dict"])
@@ -152,7 +150,7 @@ def train():
             optimizer.zero_grad()
             color_seq = color_seq.to(device)
             signal_seq = signal_seq.to(device)
-            preds = model(color_seq, signal_seq)
+            preds = model(color_seq)
             mse_loss,neg_pearson_loss = MSE_NegPearsonLoss()(preds, signal_seq)
             loss = mse_loss + neg_pearson_loss
             loss.backward()
