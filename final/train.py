@@ -135,7 +135,7 @@ def train():
     epochs = 10 
     log_every = 10
     best_loss = float('inf')
-    load_weight = False
+    load_weight = True  
     if os.path.exists("/data/best_model.pth") and load_weight:
         chkpt = torch.load("/data/best_model.pth")
         model.load_state_dict(chkpt["model_state_dict"])

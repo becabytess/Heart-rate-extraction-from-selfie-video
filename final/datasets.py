@@ -52,8 +52,7 @@ class UBFC_Dataset(Dataset):
         color_seq = color_seq.reshape(self.seq_len,3,3)
         mean = color_seq.mean(axis=0, keepdims=True)
         std = color_seq.std(axis=0, keepdims=True)
-        color_seq = color_seq - mean / (std + 1e-6) #per roi , per channel normalization (z-score)
-        
+        color_seq = (color_seq - mean) / (std + 1e-6) #per roi , per channel normalization (z-score)    
         color_seq = color_seq.reshape(self.seq_len,9) #flatten back to (seq_len, 9)
        
         color_seq = self.bandpass_filter(color_seq, lowcut=0.7, highcut=2.5, fs=30, order=2) #bandpass filter the color sequence
