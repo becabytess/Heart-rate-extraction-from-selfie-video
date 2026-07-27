@@ -40,10 +40,6 @@ class UBFC_Dataset(Dataset):
         y = filtfilt(b, a, data,axis=0)
         return y
 
-    
-
-
-
     def __getitem__(self, index):
         subject,i = self.possible_ranges[index] 
         signal_path = os.path.join(self.data_path,subject, 'ground_truth.txt')
@@ -54,15 +50,17 @@ class UBFC_Dataset(Dataset):
         color_seq = colors[i : i + self.seq_len]
         #seperate the 9 channels into 3 regions and normalize each region separately
         color_seq = color_seq.reshape(self.seq_len,3,3)
-       
         mean = color_seq.mean(axis=0, keepdims=True)
         std = color_seq.std(axis=0, keepdims=True)
         color_seq = color_seq - mean / (std + 1e-6) #per roi , per channel normalization (z-score)
         
         color_seq = color_seq.reshape(self.seq_len,9) #flatten back to (seq_len, 9)
-        signal_seq = self.bandpass_filter(signal_seq, lowcut=0.7, highcut=2.5, fs=30, order=2) #bandpass filter the signal sequence
+       
+        color_seq = self.bandpass_filter(color_seq, lowcut=0.7, highcut=2.5, fs=30, order=2) #bandpass filter the color sequence
+        color_seq = torch.tensor(color_seq.copy(), dtype=torch.float32)
         signal_seq = torch.tensor(signal_seq.copy(), dtype=torch.float32)
-
         return torch.tensor(color_seq, dtype=torch.float32), torch.unsqueeze(signal_seq, dim=-1)  
+
+
 
     

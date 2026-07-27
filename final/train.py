@@ -107,7 +107,7 @@ def train():
     random_seed = 42
     train_dataset, test_dataset = random_split(dataset, [train_size, test_size], generator=torch.Generator().manual_seed(random_seed))
 
-    batch_size = 1000
+    batch_size = 128
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
