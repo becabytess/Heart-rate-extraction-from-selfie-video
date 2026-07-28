@@ -24,15 +24,15 @@ The production pipeline tracks facial skin ROIs using YuNet face detection, reco
 
 ---
 
-## 📊 Dataset Benchmark & Model Validation
+## 📊 Held-Out Validation Benchmark (Seed 42)
 
-The Transformer model (`rPPGModel`) was evaluated on **42 subjects** from the **UBFC-RPPG Dataset**, comparing predicted pulse signals against ground-truth finger-clip BVP sensors:
+The Transformer model (`rPPGModel`) was evaluated on a **held-out 20% validation split (13,761 sequences, seed 42)** from the **UBFC-RPPG Dataset**, comparing predicted pulse signals against ground-truth finger-clip BVP sensors:
 
-| Evaluation Metric | UBFC Dataset Benchmark |
+| Evaluation Metric | Held-Out Validation Benchmark |
 | :--- | :---: |
-| **Average Pearson Correlation ($r$)** | **`+0.9546`** |
-| **Median Absolute Error (BPM)** | **`4.30 BPM`** |
-| **Mean Absolute Error (BPM)** | **`8.10 BPM`** |
+| **Mean Pearson Correlation ($r$)** | **`+0.9080`** |
+| **Median Pearson Correlation ($r$)** | **`+0.9135`** |
+| **Mean Validation Loss (MSE + Pearson)** | **`0.1733`** |
 
 ---
 
