@@ -14,7 +14,7 @@ The production pipeline tracks facial skin ROIs using YuNet face detection, reco
 
 - **Soft Red Face Glow**: Dynamic facial contour overlay (`cv2.convexHull` + Gaussian edge blur) pulsing in rhythm with each cardiac beat.
 - **5-Second Rolling Pulse Wave**: Real-time graph displaying the reconstructed rPPG waveform.
-- **Live Heart Rate Display**: Real-time heart rate (`BPM: 106`) computed via Welch Power Spectral Density.
+- **Live Heart Rate Display**: Real-time heart rate (BPM) computed via Welch Power Spectral Density.
 
 ![rPPG Live Demo](final/output_video.gif)
 
@@ -68,6 +68,8 @@ The Transformer model (`rPPGModel`) was evaluated on a **held-out 20% validation
    - Sliding 300-frame windows ($10\text{ seconds}$ at $30\text{ FPS}$) are normalized per-window via z-score scaling.
    - Self-attention encoder layers reconstruct long-range temporal cardiac pulse waveforms.
    - Overlapping predictions are stitched via linear window averaging.
+5. **Sliding Window Heart Rate Estimation**:
+   - Computes the median Welch Power Spectral Density peak over sliding 10-second windows to isolate physiological cardiac pulse signals from ambient low-frequency noise.
 
 ---
 

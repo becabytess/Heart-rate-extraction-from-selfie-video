@@ -20,7 +20,7 @@ if not os.path.exists(YUNET_PATH):
 # ---------------------------
 # Signal Processing Utilities
 # ---------------------------
-def bandpass_filter(data, lowcut=0.7, highcut=2.5, fs=30.0, order=2):
+def bandpass_filter(data, lowcut=0.85, highcut=2.5, fs=30.0, order=2):
     nyq = 0.5 * fs
     sos = butter(order, [lowcut / nyq, highcut / nyq], btype='band', output='sos')
     return sosfiltfilt(sos, data, axis=0)
@@ -101,15 +101,33 @@ def extract_roi_means_and_landmarks(video_path):
     cap.release()
     return np.array(roi_colors), face_hulls, fps
 
-def estimate_bpm(sig, fs=30.0, lowcut=0.7, highcut=2.5):
+def estimate_bpm(sig, fs=30.0, lowcut=0.85, highcut=2.5, window_sec=10.0, stride_sec=2.0):
     """
-    Standard Heart Rate (BPM) Estimator using Welch Power Spectral Density.
-    Identifies the dominant frequency peak in the physiological pulse passband (0.7 - 2.5 Hz).
+    Robust Heart Rate (BPM) Estimator.
+    Computes spectral peaks over sliding 10-second windows and calculates the median 
+    to isolate cardiac pulse signals from ambient low-frequency noise.
     """
-    f, pxx = welch(sig, fs=fs, nperseg=min(512, len(sig)))
-    mask = (f >= lowcut) & (f <= highcut)
-    dominant_freq = f[mask][np.argmax(pxx[mask])]
-    return dominant_freq * 60.0
+    win_len = int(window_sec * fs)
+    stride = int(stride_sec * fs)
+
+    if len(sig) < win_len:
+        f, pxx = welch(sig, fs=fs, nperseg=len(sig))
+        mask = (f >= lowcut) & (f <= highcut)
+        return float(f[mask][np.argmax(pxx[mask])] * 60.0)
+
+    window_bpms = []
+    for start in range(0, len(sig) - win_len + 1, stride):
+        window = sig[start:start + win_len]
+        f, pxx = welch(window, fs=fs, nperseg=len(window))
+        mask = (f >= lowcut) & (f <= highcut)
+        if np.any(mask):
+            bpm = f[mask][np.argmax(pxx[mask])] * 60.0
+            window_bpms.append(bpm)
+
+    if len(window_bpms) == 0:
+        return 75.0
+
+    return float(np.median(window_bpms))
 
 def normalize_window(window):
     """Per-ROI per-channel z-score normalization matching training data."""
@@ -247,10 +265,10 @@ if __name__ == "__main__":
 
     # Windowed model inference
     preds = run_model_windowed(model, colors_filtered, seq_len=300, stride=150)
-    preds = bandpass_filter(preds, 0.7, 2.5, fs=fps, order=2)
+    preds = bandpass_filter(preds, 0.85, 2.5, fs=fps, order=2)
     preds = smooth_signal(preds, 9)
 
-    # Estimate Heart Rate (BPM) using actual video FPS & pure Welch peak selection
+    # Estimate Heart Rate (BPM) using sliding 10-second window median
     estimated_bpm = estimate_bpm(preds, fs=fps)
     print(f"Estimated Heart Rate (BPM): {estimated_bpm:.2f}")
 
