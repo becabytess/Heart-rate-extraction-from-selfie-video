@@ -14,9 +14,11 @@ The production pipeline tracks facial skin ROIs using YuNet face detection, reco
 
 - **Soft Red Face Glow**: Dynamic facial contour overlay (`cv2.convexHull` + Gaussian edge blur) pulsing in rhythm with each cardiac beat.
 - **5-Second Rolling Pulse Wave**: Real-time graph displaying the reconstructed rPPG waveform.
-- **Live Heart Rate Display**: Real-time heart rate (BPM) computed via Welch Power Spectral Density.
+- **Live Heart Rate Display**: Real-time heart rate (`BPM: 106`) computed via Welch Power Spectral Density.
 
-| Compressed Input Video (7.0 MB) | Rendered Output Video (25.8 MB) |
+![rPPG Live Demo](final/output_video.gif)
+
+| Input Selfie Video (7.0 MB) | Full Output Video (25.8 MB) |
 | :---: | :---: |
 | [`final/sample_video_2.mp4`](final/sample_video_2.mp4) | [`final/output_video.mp4`](final/output_video.mp4) |
 
@@ -45,6 +47,7 @@ The Transformer model (`rPPGModel`) was evaluated on **42 subjects** from the **
 │   ├── train.py            # Model training script (Modal Cloud T4 GPU)
 │   ├── test.py             # Inference pipeline & video renderer
 │   ├── sample_video_2.mp4  # Lightweight input sample video (7.0 MB)
+│   ├── output_video.gif    # Auto-playing README demo animation (6.0 MB)
 │   └── output_video.mp4    # Rendered video output (25.8 MB)
 ├── experiments/            # Exploratory research, notebooks & baseline models
 ├── data/                   # UBFC-RPPG Dataset cache
