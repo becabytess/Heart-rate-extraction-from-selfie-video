@@ -7,6 +7,7 @@ import modal
 import sys
 sys.path.append("/data") # Tell Python to check your mounted volume directory for modules
 from datasets import UBFC_Dataset
+# from model import rPPGModel
 
 #modal volume put rppg-data "../data" "data" 
 #modal volume put rppg-data datasets.py  dataset.py (add --force flag when uploading again after edits)
@@ -137,6 +138,7 @@ def train():
     best_loss = float('inf')
     load_weight = True  
     if os.path.exists("/data/best_model.pth") and load_weight:
+        print("Loading checkpoint")
         chkpt = torch.load("/data/best_model.pth")
         model.load_state_dict(chkpt["model_state_dict"])
         optimizer.load_state_dict(chkpt["optimizer_state_dict"])
@@ -170,6 +172,7 @@ def train():
             print(f"New Best Loss: {val_loss}")
             torch.save(chkpt, "/data/best_model.pth")
         else:
+            print(f"No improvement in validation loss: {val_loss} (Best: {best_loss})")
             torch.save(chkpt, "/data/latest.pth")    
 
 

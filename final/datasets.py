@@ -1,65 +1,86 @@
-from torch.utils.data import Dataset, DataLoader
-import numpy as np 
-import torch 
-import os 
-from scipy.signal import butter, filtfilt  
-
-# sample_subject = subjects[0]
-# sample_roi = np.loadtxt(os.path.join(data_path, sample_subject, 'roi_colors.txt'), delimiter=',')
-
-
-# sample_subject = subjects[0]
-# sample_signal = np.loadtxt(os.path.join(data_path, sample_subject, 'ground_truth.txt'))
-# sample_roi  = np.loadtxt(os.path.join(data_path, sample_subject, 'roi_colors.txt'), delimiter=',')
-# print(f"Sample ROI shape: {sample_roi.shape}")
-# print(f"Sample signal shape: {sample_signal.shape}")
-
-#roi shape: (1547,9(average rgb values from 3 regions: left cheek , right cheek and forehead)), signal shape: (3,1547)
-#each frame has 3 labels in the dataset : Normalized Blood Volume Pulse , Heart Rate and Time. We will only train on the first one
+import os
+import torch
+import numpy as np
+from scipy.signal import butter, filtfilt, detrend
+from torch.utils.data import Dataset
 
 class UBFC_Dataset(Dataset):
-    def __init__(self, data_path, subjects,seq_len=300):
-        self.data_path = data_path 
-        self.subjects = subjects 
+    """
+    Dataset loader for UBFC-RPPG dataset.
+    Loads raw ROI colors (9 channels) and ground-truth pulse signals (BVP).
+    Applies continuous detrending and bandpass filtering per subject prior to slicing 300-frame windows.
+    """
+
+    def __init__(self, data_path, subjects, seq_len=300,
+                 lowcut=0.7, highcut=2.5, fs=30, order=2,
+                 filter_target=False):
+        self.data_path = data_path
+        self.subjects = subjects
         self.seq_len = seq_len
-        self.possible_ranges = [] 
+        self.lowcut = lowcut
+        self.highcut = highcut
+        self.fs = fs
+        self.order = order
+        self.filter_target = filter_target
+
+        self.possible_ranges = []
+        self.filtered_colors = {}
+        self.filtered_signal = {}
+
         for subject in subjects:
-            signal_path = os.path.join(data_path,subject, 'ground_truth.txt')
-            signal = np.loadtxt(signal_path)
-            num_starts = signal.shape[-1] - seq_len 
-            for i in range(num_starts): 
-                self.possible_ranges.append((subject, i)) 
+            signal_path = os.path.join(data_path, subject, 'ground_truth.txt')
+            colors_path = os.path.join(data_path, subject, 'roi_colors.txt')
+
+            if not os.path.exists(signal_path) or not os.path.exists(colors_path):
+                continue
+
+            with open(signal_path, 'r') as f:
+                lines = f.readlines()
+                signal = np.array([float(x) for x in lines[0].strip().split()])
+
+            colors = np.loadtxt(colors_path, delimiter=',')
+
+            # Detrend & bandpass filter full continuous subject recording
+            colors_clean = detrend(colors, axis=0)
+            colors_clean = self.bandpass_filter(colors_clean)
+
+            if self.filter_target:
+                signal_clean = detrend(signal)
+                signal_clean = self.bandpass_filter(signal_clean)
+            else:
+                signal_clean = signal
+
+            self.filtered_colors[subject] = colors_clean
+            self.filtered_signal[subject] = signal_clean
+
+            num_starts = len(signal) - seq_len
+            for i in range(num_starts):
+                self.possible_ranges.append((subject, i))
+
     def __len__(self):
         return len(self.possible_ranges)
-     
-    def bandpass_filter(self, data, lowcut, highcut, fs, order=3):
-        nyq = 0.5 * fs 
-        low = lowcut / nyq 
-        high = highcut / nyq
-        b, a = butter(order, [low, high], btype='band')
-        y = filtfilt(b, a, data,axis=0)
-        return y
+
+    def bandpass_filter(self, data):
+        nyq = 0.5 * self.fs
+        low = self.lowcut / nyq
+        high = self.highcut / nyq
+        b, a = butter(self.order, [low, high], btype='band')
+        return filtfilt(b, a, data, axis=0)
 
     def __getitem__(self, index):
-        subject,i = self.possible_ranges[index] 
-        signal_path = os.path.join(self.data_path,subject, 'ground_truth.txt')
-        colors_path = os.path.join(self.data_path, subject, 'roi_colors.txt')
-        signals = np.loadtxt(signal_path)
-        colors = np.loadtxt(colors_path, delimiter=',')
-        signal_seq = signals[0,i : i + self.seq_len]
-        color_seq = colors[i : i + self.seq_len]
-        #seperate the 9 channels into 3 regions and normalize each region separately
-        color_seq = color_seq.reshape(self.seq_len,3,3)
+        subject, i = self.possible_ranges[index]
+
+        color_seq = self.filtered_colors[subject][i:i + self.seq_len].copy()
+        signal_seq = self.filtered_signal[subject][i:i + self.seq_len].copy()
+
+        # Per-ROI per-channel z-score normalization
+        color_seq = color_seq.reshape(self.seq_len, 3, 3)
         mean = color_seq.mean(axis=0, keepdims=True)
         std = color_seq.std(axis=0, keepdims=True)
-        color_seq = (color_seq - mean) / (std + 1e-6) #per roi , per channel normalization (z-score)    
-        color_seq = color_seq.reshape(self.seq_len,9) #flatten back to (seq_len, 9)
-       
-        color_seq = self.bandpass_filter(color_seq, lowcut=0.7, highcut=2.5, fs=30, order=2) #bandpass filter the color sequence
-        color_seq = torch.tensor(color_seq.copy(), dtype=torch.float32)
-        signal_seq = torch.tensor(signal_seq.copy(), dtype=torch.float32)
-        return torch.tensor(color_seq, dtype=torch.float32), torch.unsqueeze(signal_seq, dim=-1)  
+        color_seq = (color_seq - mean) / (std + 1e-6)
+        color_seq = color_seq.reshape(self.seq_len, 9)
 
+        color_seq = torch.tensor(color_seq, dtype=torch.float32)
+        signal_seq = torch.tensor(signal_seq, dtype=torch.float32)
 
-
-    
+        return color_seq, torch.unsqueeze(signal_seq, dim=-1)

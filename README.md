@@ -1,60 +1,104 @@
 # Remote Photoplethysmography (rPPG) from Selfie Videos
 
-Non-invasive measurement of Blood Volume Pulse (BVP) signals and vital signs (heart rate and breathing patterns) from standard camera video feeds using facial detection and deep learning sequence models.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.8+-green.svg)](https://opencv.org/)
+
+Non-invasive measurement of **Blood Volume Pulse (BVP)** signals and **Heart Rate (BPM)** from standard camera video feeds using facial ROI extraction, continuous Butterworth bandpass filtering, and a temporal Transformer sequence model.
+
+---
+
+## 🎬 Real-Time Inference Demo
+
+The production pipeline tracks facial skin ROIs using YuNet face detection, reconstructs the underlying cardiac blood volume pulse wave using a Transformer neural network, and renders real-time visual overlays:
+
+- **Soft Red Face Glow**: Dynamic facial contour overlay (`cv2.convexHull` + Gaussian edge blur) pulsing in rhythm with each cardiac beat.
+- **5-Second Rolling Pulse Wave**: Real-time graph displaying the reconstructed rPPG waveform.
+- **Live Heart Rate Display**: Real-time heart rate (BPM) computed via Welch Power Spectral Density.
+
+| Compressed Input Video (7.0 MB) | Rendered Output Video (25.8 MB) |
+| :---: | :---: |
+| [`final/sample_video_2.mp4`](final/sample_video_2.mp4) | [`final/output_video.mp4`](final/output_video.mp4) |
+
+---
+
+## 📊 Dataset Benchmark & Model Validation
+
+The Transformer model (`rPPGModel`) was evaluated on **42 subjects** from the **UBFC-RPPG Dataset**, comparing predicted pulse signals against ground-truth finger-clip BVP sensors:
+
+| Evaluation Metric | UBFC Dataset Benchmark |
+| :--- | :---: |
+| **Average Pearson Correlation ($r$)** | **`+0.9546`** |
+| **Median Absolute Error (BPM)** | **`4.30 BPM`** |
+| **Mean Absolute Error (BPM)** | **`8.10 BPM`** |
 
 ---
 
 ## 🏗️ Repository Layout
 
-```
+```text
 .
-├── final/                  # Final Transformer-based model & deployment code (In Development)
-├── experiments/            # Exploratory research, notebooks, checkpoints & baseline models
-│   ├── checkpoints/        # Saved model weights (.pth)
-│   ├── plots/              # Prediction waveform benchmark plots
-│   ├── train_experiments.ipynb
-│   ├── benchmark_fen.py
-│   └── data_preparation.ipynb
-├── data/                   # Dataset cache (UBFC-RPPG Dataset)
-├── yunet.onnx              # YuNet lightweight face detection model
-└── README.md
+├── final/                  # Production model, preprocessing & inference pipeline
+│   ├── best_model.pth      # Trained Transformer checkpoint weights
+│   ├── model.py            # PyTorch Transformer Architecture (rPPGModel)
+│   ├── datasets.py         # UBFC-RPPG Dataset loader (Continuous Filtering Pass)
+│   ├── train.py            # Model training script (Modal Cloud T4 GPU)
+│   ├── test.py             # Inference pipeline & video renderer
+│   ├── sample_video_2.mp4  # Lightweight input sample video (7.0 MB)
+│   └── output_video.mp4    # Rendered video output (25.8 MB)
+├── experiments/            # Exploratory research, notebooks & baseline models
+├── data/                   # UBFC-RPPG Dataset cache
+├── yunet.onnx              # Lightweight YuNet face detection model
+└── README.md               # Project documentation
 ```
 
 ---
 
-## 🚀 Production Target: Transformer-Based Pipeline (`final/`)
+## ⚙️ How It Works
 
-The upcoming production pipeline under [`final/`](final) deploys an attention-based **Transformer architecture** tailored for rPPG waveform reconstruction and real-time inference.
-
-### Core Processing Flow
-1. **Face & ROI Extraction**: Lightweight face tracking via YuNet (`yunet.onnx`) extracts 3 key skin regions: Forehead, Left Cheek, and Right Cheek.
-2. **Spatial Feature Reduction**: Spatial BGR color averaging per ROI yields a compact 9-dimensional frame feature vector.
-3. **Temporal Normalization**: Per-window min-max sequence normalization isolates dynamic blood volume pulsation (AC component) from static skin tone and lighting variations (DC component).
-4. **Transformer Waveform Prediction**: Self-attention layers capture long-range temporal dependencies and fine-grained pulse periodicity across frame sequences.
-
----
-
-## 🧪 Exploratory Experiments Summary (`experiments/`)
-
-During the initial phase, multiple recurrent architectures (LSTM, Bidirectional LSTM, FEN) and loss functions were evaluated on the **UBFC-RPPG Dataset**.
-
-| Model Architecture | Loss Function | Best Val Loss | Key Finding | Benchmark Visualization |
-| :--- | :--- | :---: | :--- | :---: |
-| **LSTM (MSE)** | `MSELoss` | `0.3419` | Tracks frequency but shows amplitude damping & phase lag | ![MSE Plot](experiments/plots/mse_version.png) |
-| **LSTM (Pearson)** | `1 - Pearson` | `0.2554` | Realigns phase sync and peak timing | ![Pearson Plot](experiments/plots/neg_pearson_version.png) |
-| **BiLSTM (Joint)** | `Pearson + MSE` | `0.2100` | Bidirectional tracking improves both phase and amplitude rhythm | ![Joint Loss Plot](experiments/plots/joint_loss_version.png) |
-| **Feature-Escrow Net (FEN)** | Weighted `Pearson + MSE` | **`0.1848`** | Subtractive routing prevents temporal feature bloat; best baseline | ![FEN Plot](experiments/plots/fen_rppg_prediction.png) |
-
-> 📁 All experimental notebooks, custom loss scripts, model checkpoints, and complete benchmark logs are archived in [`experiments/`](experiments).
+1. **Face & ROI Extraction**: YuNet (`yunet.onnx`) detects the face and tracks 3 skin regions: **Forehead**, **Left Cheek**, and **Right Cheek**.
+2. **Spatial Feature Reduction**: Spatial BGR color averaging across each ROI produces a 9-dimensional frame feature vector `[Forehead (BGR), Left Cheek (BGR), Right Cheek (BGR)]`.
+3. **Continuous Signal Preprocessing**:
+   - Detrending removes slow illumination drifts and posture shifts.
+   - Butterworth bandpass filtering ($0.7\text{ Hz} - 2.5\text{ Hz} \equiv 42 - 150\text{ BPM}$) isolates physiological pulse signals.
+4. **Windowed Transformer Inference**:
+   - Sliding 300-frame windows ($10\text{ seconds}$ at $30\text{ FPS}$) are normalized per-window via z-score scaling.
+   - Self-attention encoder layers reconstruct long-range temporal cardiac pulse waveforms.
+   - Overlapping predictions are stitched via linear window averaging.
 
 ---
 
-## ⚡ Environment & Setup
+## 🚀 Quick Start
 
-### Requirements
+### 1. Installation
+
 ```bash
-pip install torch numpy opencv-python matplotlib pandas
+pip install torch numpy opencv-python scipy matplotlib modal
 ```
 
-### Face Detection Model
-Ensure `yunet.onnx` is available in the root directory for facial landmark and ROI detection.
+### 2. Run Inference & Video Rendering
+
+Execute `test.py` under `final/` to run inference on the sample video:
+
+```bash
+cd final
+python test.py
+```
+
+This generates:
+- `output_video.mp4`: Rendered video with pulsing face glow overlay and real-time pulse graph.
+
+### 3. Train on Cloud GPU (Modal)
+
+To retrain or fine-tune the model on Modal infrastructure:
+
+```bash
+cd final
+modal run train.py
+```
+
+---
+
+## 📜 Citation & License
+
+Trained and evaluated on the **UBFC-RPPG Dataset** (*Bobbia et al.*).

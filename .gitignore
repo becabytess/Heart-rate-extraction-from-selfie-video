@@ -2,5 +2,9 @@ rPPG-Toolbox
 .env
 *.tar
 *.gz
+*.avi
 __pycache__
 final/__pycache__
+final/face_landmarker.task
+final/compress_data.py
+final/datatar.tar.gz
