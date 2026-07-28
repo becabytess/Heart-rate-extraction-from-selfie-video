@@ -3,7 +3,7 @@ import cv2
 import urllib.request
 import numpy as np
 import torch
-from scipy.signal import butter, sosfiltfilt, detrend, welch, correlate, find_peaks
+from scipy.signal import butter, sosfiltfilt, detrend, welch
 from model import rPPGModel
 
 # ---------------------------
@@ -103,24 +103,13 @@ def extract_roi_means_and_landmarks(video_path):
 
 def estimate_bpm(sig, fs=30.0, lowcut=0.7, highcut=2.5):
     """
-    Robust Heart Rate (BPM) Estimator.
-    Evaluates top Welch PSD spectral peaks to accurately identify the true cardiac pulse rate.
+    Standard Heart Rate (BPM) Estimator using Welch Power Spectral Density.
+    Identifies the dominant frequency peak in the physiological pulse passband (0.7 - 2.5 Hz).
     """
     f, pxx = welch(sig, fs=fs, nperseg=min(512, len(sig)))
     mask = (f >= lowcut) & (f <= highcut)
-    f_valid = f[mask]
-    pxx_valid = pxx[mask]
-
-    top_indices = np.argsort(pxx_valid)[::-1]
-    peak1_bpm = f_valid[top_indices[0]] * 60.0
-    peak2_bpm = f_valid[top_indices[1]] * 60.0 if len(top_indices) > 1 else peak1_bpm
-
-    # If peak1 is in the 48-62 BPM range but peak2 is in the 96-120 BPM range with significant power, select peak2 (true pulse rate)
-    if 48.0 <= peak1_bpm <= 62.0 and 96.0 <= peak2_bpm <= 120.0:
-        if pxx_valid[top_indices[1]] / (pxx_valid[top_indices[0]] + 1e-12) > 0.4:
-            return peak2_bpm
-
-    return peak1_bpm
+    dominant_freq = f[mask][np.argmax(pxx[mask])]
+    return dominant_freq * 60.0
 
 def normalize_window(window):
     """Per-ROI per-channel z-score normalization matching training data."""
@@ -261,7 +250,7 @@ if __name__ == "__main__":
     preds = bandpass_filter(preds, 0.7, 2.5, fs=fps, order=2)
     preds = smooth_signal(preds, 9)
 
-    # Estimate Heart Rate (BPM) using actual video FPS & robust peak resolution
+    # Estimate Heart Rate (BPM) using actual video FPS & pure Welch peak selection
     estimated_bpm = estimate_bpm(preds, fs=fps)
     print(f"Estimated Heart Rate (BPM): {estimated_bpm:.2f}")
 
