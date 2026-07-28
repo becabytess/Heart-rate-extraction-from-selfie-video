@@ -111,14 +111,14 @@ def estimate_bpm(sig, fs=30.0, lowcut=0.85, highcut=2.5, window_sec=10.0, stride
     stride = int(stride_sec * fs)
 
     if len(sig) < win_len:
-        f, pxx = welch(sig, fs=fs, nperseg=len(sig))
+        f, pxx = welch(sig, fs=fs, nperseg=min(256, len(sig)))
         mask = (f >= lowcut) & (f <= highcut)
         return float(f[mask][np.argmax(pxx[mask])] * 60.0)
 
     window_bpms = []
     for start in range(0, len(sig) - win_len + 1, stride):
         window = sig[start:start + win_len]
-        f, pxx = welch(window, fs=fs, nperseg=len(window))
+        f, pxx = welch(window, fs=fs, nperseg=min(256, len(window)))
         mask = (f >= lowcut) & (f <= highcut)
         if np.any(mask):
             bpm = f[mask][np.argmax(pxx[mask])] * 60.0
